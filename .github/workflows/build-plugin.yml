@@ -54,10 +54,15 @@ jobs:
           RUN_ID="${{ github.run_id }}"
           PLUGIN="${{ env.PLUGIN_NAME }}"
           if [ "$STATUS" = "success" ]; then
-            MSG="✅ *${PLUGIN}* built successfully%0ARun ID: \`${RUN_ID}\`%0AInstall: \`~/install-plugin.sh ${RUN_ID}\`"
+            MSG="✅ *${PLUGIN}* built successfully
+Run ID: ${RUN_ID}
+Install: ~/install-plugin.sh ${RUN_ID}"
           else
-            MSG="❌ *${PLUGIN}* build failed%0ARun ID: \`${RUN_ID}\`%0ACheck: https://github.com/deklinmcg/plugin-builds/actions/runs/${RUN_ID}"
+            MSG="❌ *${PLUGIN}* build failed
+Check: https://github.com/deklinmcg/plugin-builds/actions/runs/${RUN_ID}"
           fi
+          BODY=$(jq -n --arg type "build_result" --arg plugin "$PLUGIN" --arg status "$STATUS" --arg run_id "$RUN_ID" --arg message "$MSG" \
+            '{type:$type,plugin:$plugin,status:$status,run_id:$run_id,message:$message}')
           curl -s -X POST "${{ secrets.N8N_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
-            -d "{\"type\":\"build_result\",\"plugin\":\"${PLUGIN}\",\"status\":\"${STATUS}\",\"run_id\":\"${RUN_ID}\",\"message\":\"${MSG}\"}" || true
+            -d "$BODY" || true
