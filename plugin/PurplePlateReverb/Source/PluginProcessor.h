@@ -12,7 +12,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
-    bool hasEditor() const override;
+    bool hasEditor() const override { return true; }
 
     void getStateInformation (juce::MemoryBlock& d) override;
     void setStateInformation (const void* d, int s) override;

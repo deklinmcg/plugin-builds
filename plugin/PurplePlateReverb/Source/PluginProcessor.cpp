@@ -185,8 +185,11 @@ void PurplePlateReverbAudioProcessor::setStateInformation (const void* d, int si
     *gateRateParam   = s.readFloat();
 }
 
-juce::AudioProcessorEditor* PurplePlateReverbAudioProcessor::createEditor() { return nullptr; }
-bool PurplePlateReverbAudioProcessor::hasEditor() const { return false; }
+juce::AudioProcessorEditor* PurplePlateReverbAudioProcessor::createEditor()
+{
+    return new juce::GenericAudioProcessorEditor (*this);
+}
+bool PurplePlateReverbAudioProcessor::hasEditor() const { return true; }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
