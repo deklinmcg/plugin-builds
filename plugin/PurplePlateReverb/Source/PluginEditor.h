@@ -1,21 +1,14 @@
-#ifndef PLUGINEDITOR_H_INCLUDED
-#define PLUGINEDITOR_H_INCLUDED
-
+#pragma once
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class PurplePlateReverbAudioProcessorEditor  : public juce::AudioProcessorEditor
+class PurplePlateReverbAudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
-    PurplePlateReverbAudioProcessorEditor(PurplePlateReverbAudioProcessor&);
+    PurplePlateReverbAudioProcessorEditor (PurplePlateReverbAudioProcessor&);
     ~PurplePlateReverbAudioProcessorEditor() override;
-
-    void paint(juce::Graphics&) override;
+    void paint (juce::Graphics&) override;
     void resized() override;
-
 private:
-    // Reference to the processor
-    PurplePlateReverbAudioProcessor& processor;
+    PurplePlateReverbAudioProcessor& audioProcessor;
 };
-
-#endif // PLUGINEDITOR_H_INCLUDED

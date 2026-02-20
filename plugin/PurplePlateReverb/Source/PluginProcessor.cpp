@@ -1,84 +1,155 @@
 #include "PluginProcessor.h"
-#include "PluginEditor.h"
+#include <cmath>
+
+// Prime-ish delay lengths for plate reverb (in samples at 44100)
+static const int kAllpassLengths[8] = { 142, 107, 379, 277, 573, 419, 751, 563 };
+static const int kDelayLengths[4] = { 4453, 3720, 4217, 3163 };
+static const float kAllpassCoeffs[8] = { 0.7f, 0.7f, 0.6f, 0.6f, 0.55f, 0.55f, 0.5f, 0.5f };
 
 PurplePlateReverbAudioProcessor::PurplePlateReverbAudioProcessor()
+    : AudioProcessor(BusesProperties()
+                     .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                     .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
-    addParameter (sizeParam       = new juce::AudioParameterFloat ("size",     "Size",       0.0f,  1.0f,  0.5f));
-    addParameter (decayParam      = new juce::AudioParameterFloat ("decay",    "Decay",      0.0f,  10.0f, 3.0f));
-    addParameter (brightnessParam = new juce::AudioParameterFloat ("bright",   "Brightness", 0.0f,  1.0f,  0.7f));
-    addParameter (mixParam        = new juce::AudioParameterFloat ("mix",      "Mix",        0.0f,  1.0f,  0.5f));
-    addParameter (modDepthParam   = new juce::AudioParameterFloat ("moddepth", "Mod Depth",  0.0f,  1.0f,  0.2f));
-    addParameter (gateParam       = new juce::AudioParameterFloat ("gate",     "Gate",       0.0f,  1.0f,  0.0f));
-    addParameter (gateRateParam   = new juce::AudioParameterFloat ("gaterate", "Gate Rate",  0.1f,  8.0f,  1.0f));
+    addParameter(sizeParam       = new juce::AudioParameterFloat("size",       "Size",              0.1f, 1.0f, 0.5f));
+    addParameter(decayParam      = new juce::AudioParameterFloat("decay",      "Decay",             0.1f, 10.0f, 2.0f));
+    addParameter(brightnessParam = new juce::AudioParameterFloat("brightness", "Brightness",        0.0f, 1.0f, 0.5f));
+    addParameter(mixParam        = new juce::AudioParameterFloat("mix",        "Mix",               0.0f, 1.0f, 0.5f));
+    addParameter(modDepthParam   = new juce::AudioParameterFloat("mod_depth",  "Modulation Depth",  0.0f, 1.0f, 0.2f));
+    addParameter(gateParam       = new juce::AudioParameterFloat("gate",       "Gating",            0.0f, 1.0f, 0.0f));
+    addParameter(gateRateParam   = new juce::AudioParameterFloat("gate_rate",  "Gate Rate",         0.1f, 8.0f, 1.0f));
 }
 
 PurplePlateReverbAudioProcessor::~PurplePlateReverbAudioProcessor() {}
 
-bool PurplePlateReverbAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
-{
-    const auto& out = layouts.getMainOutputChannelSet();
-    const auto& in  = layouts.getMainInputChannelSet();
+const juce::String PurplePlateReverbAudioProcessor::getName() const { return "PurplePlateReverb"; }
+bool PurplePlateReverbAudioProcessor::acceptsMidi() const { return false; }
+bool PurplePlateReverbAudioProcessor::producesMidi() const { return false; }
+bool PurplePlateReverbAudioProcessor::isMidiEffect() const { return false; }
+double PurplePlateReverbAudioProcessor::getTailLengthSeconds() const { return 10.0; }
+int PurplePlateReverbAudioProcessor::getNumPrograms() { return 1; }
+int PurplePlateReverbAudioProcessor::getCurrentProgram() { return 0; }
+void PurplePlateReverbAudioProcessor::setCurrentProgram(int) {}
+const juce::String PurplePlateReverbAudioProcessor::getProgramName(int) { return {}; }
+void PurplePlateReverbAudioProcessor::changeProgramName(int, const juce::String&) {}
 
-    if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
+bool PurplePlateReverbAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    const auto& mainOut = layouts.getMainOutputChannelSet();
+    const auto& mainIn  = layouts.getMainInputChannelSet();
+
+    if (mainOut != juce::AudioChannelSet::mono() && mainOut != juce::AudioChannelSet::stereo())
         return false;
-
-    // Input must match output, or be mono feeding stereo
-    return (in == out || (in == juce::AudioChannelSet::mono()
-                          && out == juce::AudioChannelSet::stereo()));
+    if (mainIn != juce::AudioChannelSet::mono() && mainIn != juce::AudioChannelSet::stereo())
+        return false;
+    return true;
 }
 
-void PurplePlateReverbAudioProcessor::updateReverbParams (float size, float decay)
-{
-    juce::Reverb::Parameters p;
-    p.roomSize   = 0.3f + size * 0.7f;
-    p.damping    = 1.0f - (decay / 10.0f) * 0.92f;
-    p.wetLevel   = 1.0f;
-    p.dryLevel   = 0.0f;
-    p.width      = 1.0f;
-    p.freezeMode = 0.0f;
-    reverbL.setParameters (p);
-    reverbR.setParameters (p);
-}
-
-void PurplePlateReverbAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void PurplePlateReverbAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 {
     currentSampleRate = sampleRate;
-    reverbL.setSampleRate (sampleRate);
-    reverbR.setSampleRate (sampleRate);
-    reverbL.reset();
-    reverbR.reset();
-    updateReverbParams (sizeParam->get(), decayParam->get());
+    double sampleRateRatio = sampleRate / 44100.0;
 
-    // Pre-allocate dry buffer — no heap allocation in processBlock
-    dryBuf.setSize (2, samplesPerBlock, false, true, false);
+    // Allocate allpass buffers
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        for (int i = 0; i < kNumAllpasses; ++i)
+        {
+            int len = (int)(kAllpassLengths[i] * sampleRateRatio);
+            if (len < 1) len = 1;
+            // Slightly different lengths for second channel for stereo decorrelation
+            if (ch == 1) len = (int)(len * 1.07f);
+            allpasses[ch][i].length = len;
+            allpasses[ch][i].buffer.setSize(1, len + 16);
+            allpasses[ch][i].buffer.clear();
+            allpasses[ch][i].writeIndex = 0;
+            allpasses[ch][i].feedback = kAllpassCoeffs[i];
+        }
 
-    memset (modBufL, 0, sizeof (modBufL));
-    memset (modBufR, 0, sizeof (modBufR));
-    modWritePos   = 0;
-    lfoPhase      = 0.0f;
-    gatePhase     = 0.0f;
-    gateSlewState = 1.0f;
-    bFilterL = bFilterR = 0.0f;
+        for (int i = 0; i < kNumDelays; ++i)
+        {
+            int len = (int)(kDelayLengths[i] * sampleRateRatio);
+            if (len < 1) len = 1;
+            if (ch == 1) len = (int)(len * 1.11f);
+            delays[ch][i].length = len;
+            delays[ch][i].buffer.setSize(1, len + 64);
+            delays[ch][i].buffer.clear();
+            delays[ch][i].writeIndex = 0;
+        }
+
+        feedbackState[ch] = 0.0f;
+        lpState[ch] = 0.0f;
+    }
+
+    // Pre-delay buffer
+    preDelayLength = (int)(0.05 * sampleRate); // 50ms max predelay
+    if (preDelayLength < 1) preDelayLength = 1;
+    preDelayBuffer.setSize(2, preDelayLength + 16);
+    preDelayBuffer.clear();
+    preDelayWriteIndex = 0;
+
+    modPhase = 0.0f;
+    gatePhase = 0.0f;
 }
 
-void PurplePlateReverbAudioProcessor::releaseResources()
+void PurplePlateReverbAudioProcessor::releaseResources() {}
+
+float PurplePlateReverbAudioProcessor::readAllpass(AllpassFilter& ap, float input)
 {
-    dryBuf.setSize (0, 0);
+    float* buf = ap.buffer.getWritePointer(0);
+    int readIdx = ap.writeIndex - ap.length;
+    if (readIdx < 0) readIdx += ap.buffer.getNumSamples();
+
+    float delayed = buf[readIdx];
+    float output = -input + delayed;
+    float written = input + delayed * ap.feedback;
+    buf[ap.writeIndex] = written;
+    ap.writeIndex++;
+    if (ap.writeIndex >= ap.buffer.getNumSamples())
+        ap.writeIndex = 0;
+    return output;
 }
 
-void PurplePlateReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
-                                                    juce::MidiBuffer&)
+float PurplePlateReverbAudioProcessor::readDelay(DelayLine& dl, int offset)
 {
-    juce::ScopedNoDenormals noDenormals;
+    int idx = dl.writeIndex - offset;
+    while (idx < 0) idx += dl.buffer.getNumSamples();
+    return dl.buffer.getReadPointer(0)[idx];
+}
 
+float PurplePlateReverbAudioProcessor::readDelayInterp(DelayLine& dl, float offset)
+{
+    float fidx = (float)dl.writeIndex - offset;
+    while (fidx < 0.0f) fidx += (float)dl.buffer.getNumSamples();
+    int i0 = (int)fidx;
+    int i1 = i0 + 1;
+    float frac = fidx - (float)i0;
+    int numSamples = dl.buffer.getNumSamples();
+    i0 = i0 % numSamples;
+    i1 = i1 % numSamples;
+    const float* buf = dl.buffer.getReadPointer(0);
+    return buf[i0] + frac * (buf[i1] - buf[i0]);
+}
+
+void PurplePlateReverbAudioProcessor::writeDelay(DelayLine& dl, float sample)
+{
+    dl.buffer.getWritePointer(0)[dl.writeIndex] = sample;
+    dl.writeIndex++;
+    if (dl.writeIndex >= dl.buffer.getNumSamples())
+        dl.writeIndex = 0;
+}
+
+void PurplePlateReverbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    const int totalIn  = getTotalNumInputChannels();
+    const int totalOut = getTotalNumOutputChannels();
     const int numSamples = buffer.getNumSamples();
-    const int totalIn    = getTotalNumInputChannels();
-    const int totalOut   = getTotalNumOutputChannels();
 
-    for (int i = totalIn; i < totalOut; ++i)
-        buffer.clear (i, 0, numSamples);
+    // Clear extra output channels
+    for (int ch = totalIn; ch < totalOut; ++ch)
+        buffer.clear(ch, 0, numSamples);
 
-    // Read params
+    // Grab parameters
     const float size       = sizeParam->get();
     const float decay      = decayParam->get();
     const float brightness = brightnessParam->get();
@@ -87,122 +158,181 @@ void PurplePlateReverbAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     const float gate       = gateParam->get();
     const float gateRate   = gateRateParam->get();
 
-    updateReverbParams (size, decay);
+    // Compute feedback coefficient from decay
+    // At decay=10s, we want feedback close to 1. At decay=0.1s, close to 0.
+    // Average delay loop length ~ sum of delay lengths / sr
+    double avgLoopTime = 0.0;
+    for (int i = 0; i < kNumDelays; ++i)
+        avgLoopTime += (double)delays[0][i].length;
+    avgLoopTime /= currentSampleRate;
+    if (avgLoopTime < 0.001) avgLoopTime = 0.001;
 
-    const bool isStereo = (totalOut >= 2);
+    // fb^(1/avgLoopTime) = e^(-3/decay) => fb = e^(-3*avgLoopTime/decay)
+    float fb = std::exp(-3.0f * (float)avgLoopTime / juce::jmax(decay, 0.1f));
+    fb = juce::jlimit(0.0f, 0.99f, fb);
 
-    if (isStereo)
+    // Lowpass coefficient for brightness: higher brightness = higher cutoff
+    float lpCoeff = 0.05f + brightness * 0.9f; // range [0.05, 0.95]
+
+    // Modulation rate ~0.5 Hz
+    float modRate = 0.5f;
+    float modPhaseInc = (float)(modRate / currentSampleRate);
+    float gatePhaseInc = (float)(gateRate / currentSampleRate);
+
+    // Size scaling for allpass/delay read offsets
+    float sizeScale = 0.3f + size * 0.7f; // range [0.3, 1.0]
+
+    // Pre-delay amount scaled by size
+    int preDelaySamples = (int)(size * 0.04f * (float)currentSampleRate);
+    preDelaySamples = juce::jlimit(1, preDelayLength - 1, preDelaySamples);
+
+    for (int n = 0; n < numSamples; ++n)
     {
-        // Save dry (no allocation — uses pre-allocated dryBuf)
-        dryBuf.copyFrom (0, 0, buffer, 0, 0, numSamples);
-        dryBuf.copyFrom (1, 0, buffer, (totalIn > 1) ? 1 : 0, 0, numSamples);
+        // Get mono input
+        float inL = buffer.getReadPointer(0)[n];
+        float inR = (totalIn >= 2) ? buffer.getReadPointer(1)[n] : inL;
+        float monoIn = (inL + inR) * 0.5f;
 
-        if (totalIn == 1)
-            buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+        // Write to pre-delay
+        if (preDelayWriteIndex >= preDelayBuffer.getNumSamples())
+            preDelayWriteIndex = 0;
+        preDelayBuffer.getWritePointer(0)[preDelayWriteIndex] = monoIn;
+        if (preDelayBuffer.getNumChannels() > 1)
+            preDelayBuffer.getWritePointer(1)[preDelayWriteIndex] = monoIn;
 
-        float* L = buffer.getWritePointer (0);
-        float* R = buffer.getWritePointer (1);
+        // Read from pre-delay
+        int pdReadIdx = preDelayWriteIndex - preDelaySamples;
+        if (pdReadIdx < 0) pdReadIdx += preDelayBuffer.getNumSamples();
+        float preDelayed = preDelayBuffer.getReadPointer(0)[pdReadIdx];
+        preDelayWriteIndex++;
 
-        reverbL.processStereo (L, R, numSamples);
+        // Modulation LFO
+        float modLFO = std::sin(2.0f * juce::MathConstants<float>::pi * modPhase);
+        modPhase += modPhaseInc;
+        if (modPhase >= 1.0f) modPhase -= 1.0f;
 
-        const float* dryL = dryBuf.getReadPointer (0);
-        const float* dryR = dryBuf.getReadPointer (1);
+        // Gate LFO (square-ish wave with smooth transitions)
+        float gateLFO = 0.5f + 0.5f * std::sin(2.0f * juce::MathConstants<float>::pi * gatePhase);
+        gatePhase += gatePhaseInc;
+        if (gatePhase >= 1.0f) gatePhase -= 1.0f;
 
-        // Constants
-        const float lfoInc   = juce::MathConstants<float>::twoPi * kLfoRateHz / (float)currentSampleRate;
-        const float gateInc  = juce::MathConstants<float>::twoPi * juce::jlimit (0.1f, 8.0f, gateRate) / (float)currentSampleRate;
-        const float slewRate = 1.0f / (0.008f * (float)currentSampleRate);
-        const float cutoff   = 500.0f + brightness * 19500.0f;
-        const float bAlpha   = 1.0f / (1.0f + (float)currentSampleRate / (juce::MathConstants<float>::twoPi * cutoff));
+        // Gate amplitude: when gate=0, no gating (mult=1). When gate=1, full gating
+        float gateMult = 1.0f - gate * (1.0f - gateLFO);
 
-        for (int i = 0; i < numSamples; ++i)
+        float wetL = 0.0f, wetR = 0.0f;
+
+        for (int ch = 0; ch < 2; ++ch)
         {
-            // Modulation
-            const float lfo = std::sin (lfoPhase);
-            lfoPhase += lfoInc;
-            if (lfoPhase >= juce::MathConstants<float>::twoPi) lfoPhase -= juce::MathConstants<float>::twoPi;
+            // Input to reverb network: pre-delayed input + feedback
+            float input = preDelayed + feedbackState[ch] * fb;
 
-            modBufL[modWritePos] = L[i];
-            modBufR[modWritePos] = R[i];
-
-            const float delaySamples = 1.0f + 0.007f * (float)currentSampleRate * modDepth * (lfo * 0.5f + 0.5f);
-            const int   di   = (int)delaySamples;
-            const float frac = delaySamples - (float)di;
-            const int   rpA  = (modWritePos - di + kModBufSize) & (kModBufSize - 1);
-            const int   rpB  = (rpA - 1 + kModBufSize) & (kModBufSize - 1);
-
-            const float modL = modBufL[rpA] + frac * (modBufL[rpB] - modBufL[rpA]);
-            const float modR = modBufR[rpA] + frac * (modBufR[rpB] - modBufR[rpA]);
-            modWritePos = (modWritePos + 1) & (kModBufSize - 1);
-
-            float wetL = L[i] * (1.0f - modDepth * 0.6f) + modL * modDepth * 0.6f;
-            float wetR = R[i] * (1.0f - modDepth * 0.6f) + modR * modDepth * 0.6f;
-
-            // Gate
-            if (gate > 0.001f)
+            // Allpass chain (first 4 = input diffusion)
+            float sig = input;
+            for (int i = 0; i < 4; ++i)
             {
-                const float gateOsc = std::sin (gatePhase);
-                gatePhase += gateInc;
-                if (gatePhase >= juce::MathConstants<float>::twoPi) gatePhase -= juce::MathConstants<float>::twoPi;
-
-                const float target = (gateOsc > 0.0f) ? 1.0f : 0.0f;
-                gateSlewState += juce::jlimit (-slewRate, slewRate, target - gateSlewState);
-                const float gateGain = 1.0f - gate * (1.0f - gateSlewState);
-                wetL *= gateGain;
-                wetR *= gateGain;
+                sig = readAllpass(allpasses[ch][i], sig);
             }
-            else { gateSlewState = 1.0f; gatePhase = 0.0f; }
 
-            // Brightness LP
-            bFilterL += bAlpha * (wetL - bFilterL);
-            bFilterR += bAlpha * (wetR - bFilterR);
+            // Write into first delay line
+            writeDelay(delays[ch][0], sig);
 
-            // Mix
-            L[i] = dryL[i] * (1.0f - mix) + bFilterL * mix;
-            R[i] = dryR[i] * (1.0f - mix) + bFilterR * mix;
+            // Read from first delay with modulation
+            float modOffset = modDepth * modLFO * 16.0f; // up to 16 samples pitch drift
+            float d0len = (float)delays[ch][0].length * sizeScale;
+            float read0 = readDelayInterp(delays[ch][0], d0len + modOffset);
+
+            // Lowpass damping
+            lpState[ch] = lpState[ch] + lpCoeff * (read0 - lpState[ch]);
+            float damped = lpState[ch];
+
+            // Second allpass pair
+            float sig2 = damped;
+            for (int i = 4; i < 6; ++i)
+            {
+                sig2 = readAllpass(allpasses[ch][i], sig2);
+            }
+
+            // Second delay
+            writeDelay(delays[ch][1], sig2);
+            float read1 = readDelay(delays[ch][1], (int)(delays[ch][1].length * sizeScale));
+
+            // Third allpass pair
+            float sig3 = read1;
+            for (int i = 6; i < 8; ++i)
+            {
+                sig3 = readAllpass(allpasses[ch][i], sig3);
+            }
+
+            // Third delay
+            writeDelay(delays[ch][2], sig3);
+            float read2 = readDelay(delays[ch][2], (int)(delays[ch][2].length * sizeScale));
+
+            // Fourth delay for extra diffusion
+            writeDelay(delays[ch][3], read2);
+            float read3 = readDelay(delays[ch][3], (int)(delays[ch][3].length * sizeScale));
+
+            // Feedback state
+            feedbackState[ch] = read3;
+
+            // Output taps from various delay lines
+            float wet = read0 * 0.3f + read1 * 0.3f + read2 * 0.2f + read3 * 0.2f;
+
+            // Apply gate
+            wet *= gateMult;
+
+            if (ch == 0) wetL = wet;
+            else         wetR = wet;
+        }
+
+        // Soft clip the wet signal to prevent blowups
+        wetL = std::tanh(wetL);
+        wetR = std::tanh(wetR);
+
+        // Mix
+        if (totalOut >= 2)
+        {
+            buffer.getWritePointer(0)[n] = inL * (1.0f - mix) + wetL * mix;
+            buffer.getWritePointer(1)[n] = inR * (1.0f - mix) + wetR * mix;
+        }
+        else
+        {
+            float monoWet = (wetL + wetR) * 0.5f;
+            float monoOrig = (inL + inR) * 0.5f;
+            buffer.getWritePointer(0)[n] = monoOrig * (1.0f - mix) + monoWet * mix;
         }
     }
-    else
-    {
-        // Mono
-        float* M = buffer.getWritePointer (0);
-        dryBuf.copyFrom (0, 0, buffer, 0, 0, numSamples);
-
-        reverbL.processMono (M, numSamples);
-
-        const float* dryM = dryBuf.getReadPointer (0);
-        for (int i = 0; i < numSamples; ++i)
-            M[i] = dryM[i] * (1.0f - mix) + M[i] * mix;
-    }
-}
-
-void PurplePlateReverbAudioProcessor::getStateInformation (juce::MemoryBlock& d)
-{
-    juce::MemoryOutputStream s (d, true);
-    s.writeFloat (sizeParam->get());
-    s.writeFloat (decayParam->get());
-    s.writeFloat (brightnessParam->get());
-    s.writeFloat (mixParam->get());
-    s.writeFloat (modDepthParam->get());
-    s.writeFloat (gateParam->get());
-    s.writeFloat (gateRateParam->get());
-}
-
-void PurplePlateReverbAudioProcessor::setStateInformation (const void* d, int size)
-{
-    juce::MemoryInputStream s (d, (size_t)size, false);
-    *sizeParam       = s.readFloat();
-    *decayParam      = s.readFloat();
-    *brightnessParam = s.readFloat();
-    *mixParam        = s.readFloat();
-    *modDepthParam   = s.readFloat();
-    *gateParam       = s.readFloat();
-    *gateRateParam   = s.readFloat();
 }
 
 juce::AudioProcessorEditor* PurplePlateReverbAudioProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new juce::GenericAudioProcessorEditor(*this);
+}
+
+void PurplePlateReverbAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    juce::MemoryOutputStream stream(destData, true);
+    stream.writeFloat(sizeParam->get());
+    stream.writeFloat(decayParam->get());
+    stream.writeFloat(brightnessParam->get());
+    stream.writeFloat(mixParam->get());
+    stream.writeFloat(modDepthParam->get());
+    stream.writeFloat(gateParam->get());
+    stream.writeFloat(gateRateParam->get());
+}
+
+void PurplePlateReverbAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    juce::MemoryInputStream stream(data, static_cast<size_t>(sizeInBytes), false);
+    if (sizeInBytes >= (int)(7 * sizeof(float)))
+    {
+        *sizeParam       = stream.readFloat();
+        *decayParam      = stream.readFloat();
+        *brightnessParam = stream.readFloat();
+        *mixParam        = stream.readFloat();
+        *modDepthParam   = stream.readFloat();
+        *gateParam       = stream.readFloat();
+        *gateRateParam   = stream.readFloat();
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
