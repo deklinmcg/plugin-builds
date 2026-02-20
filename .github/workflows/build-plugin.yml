@@ -46,3 +46,18 @@ jobs:
           name: ${{ env.PLUGIN_NAME }}
           path: "*.zip"
           retention-days: 30
+
+      - name: Notify WhatsApp via n8n
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_ID="${{ github.run_id }}"
+          PLUGIN="${{ env.PLUGIN_NAME }}"
+          if [ "$STATUS" = "success" ]; then
+            MSG="✅ *${PLUGIN}* built successfully%0ARun ID: \`${RUN_ID}\`%0AInstall: \`~/install-plugin.sh ${RUN_ID}\`"
+          else
+            MSG="❌ *${PLUGIN}* build failed%0ARun ID: \`${RUN_ID}\`%0ACheck: https://github.com/deklinmcg/plugin-builds/actions/runs/${RUN_ID}"
+          fi
+          curl -s -X POST "${{ secrets.N8N_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"type\":\"build_result\",\"plugin\":\"${PLUGIN}\",\"status\":\"${STATUS}\",\"run_id\":\"${RUN_ID}\",\"message\":\"${MSG}\"}" || true
