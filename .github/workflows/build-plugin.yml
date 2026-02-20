@@ -1,0 +1,51 @@
+name: Build Plugin
+
+on:
+  push:
+    branches:
+      - 'plugin/**'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clone JUCE
+        run: git clone --depth 1 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure
+        run: |
+          PLUGIN_NAME=$(cat plugin_name.txt)
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DJUCE_DIR=$PWD/JUCE
+
+      - name: Build VST3
+        run: |
+          PLUGIN_NAME=$(cat plugin_name.txt)
+          cmake --build build --config Release --target ${PLUGIN_NAME}_VST3 -- -j2
+
+      - name: Build AU
+        run: |
+          PLUGIN_NAME=$(cat plugin_name.txt)
+          cmake --build build --config Release --target ${PLUGIN_NAME}_AU -- -j2
+
+      - name: Zip artifacts
+        run: |
+          PLUGIN_NAME=$(cat plugin_name.txt)
+          mkdir -p dist
+          cp -r build/${PLUGIN_NAME}/${PLUGIN_NAME}_artefacts/Release/VST3/${PLUGIN_NAME}.vst3 dist/ 2>/dev/null || true
+          cp -r build/${PLUGIN_NAME}/${PLUGIN_NAME}_artefacts/Release/AU/${PLUGIN_NAME}.component dist/ 2>/dev/null || true
+          cd dist && zip -r ../${PLUGIN_NAME}.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}
+          path: "*.zip"
+          retention-days: 30
