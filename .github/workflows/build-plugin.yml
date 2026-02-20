@@ -39,8 +39,8 @@ jobs:
         run: |
           PLUGIN_NAME=$(cat plugin_name.txt)
           mkdir -p dist
-          cp -r build/${PLUGIN_NAME}/${PLUGIN_NAME}_artefacts/Release/VST3/${PLUGIN_NAME}.vst3 dist/ 2>/dev/null || true
-          cp -r build/${PLUGIN_NAME}/${PLUGIN_NAME}_artefacts/Release/AU/${PLUGIN_NAME}.component dist/ 2>/dev/null || true
+          cp -r build/plugin/${PLUGIN_NAME}/${PLUGIN_NAME}_artefacts/Release/VST3/${PLUGIN_NAME}.vst3 dist/ 2>/dev/null || true
+          cp -r build/plugin/${PLUGIN_NAME}/${PLUGIN_NAME}_artefacts/Release/AU/${PLUGIN_NAME}.component dist/ 2>/dev/null || true
           cd dist && zip -r ../${PLUGIN_NAME}.zip .
 
       - name: Upload artifact
