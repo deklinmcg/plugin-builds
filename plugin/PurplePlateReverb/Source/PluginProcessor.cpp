@@ -189,7 +189,6 @@ juce::AudioProcessorEditor* PurplePlateReverbAudioProcessor::createEditor()
 {
     return new juce::GenericAudioProcessorEditor (*this);
 }
-bool PurplePlateReverbAudioProcessor::hasEditor() const { return true; }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
