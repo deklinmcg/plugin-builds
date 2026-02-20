@@ -10,6 +10,7 @@ public:
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -28,22 +29,20 @@ public:
     double getTailLengthSeconds() const override { return 10.0; }
 
 private:
-    // Parameters — registered with addParameter() so DAW sees them
-    juce::AudioParameterFloat* sizeParam      = nullptr;
-    juce::AudioParameterFloat* decayParam     = nullptr;
+    juce::AudioParameterFloat* sizeParam       = nullptr;
+    juce::AudioParameterFloat* decayParam      = nullptr;
     juce::AudioParameterFloat* brightnessParam = nullptr;
-    juce::AudioParameterFloat* mixParam       = nullptr;
-    juce::AudioParameterFloat* modDepthParam  = nullptr;
-    juce::AudioParameterFloat* gateParam      = nullptr;
-    juce::AudioParameterFloat* gateRateParam  = nullptr;
+    juce::AudioParameterFloat* mixParam        = nullptr;
+    juce::AudioParameterFloat* modDepthParam   = nullptr;
+    juce::AudioParameterFloat* gateParam       = nullptr;
+    juce::AudioParameterFloat* gateRateParam   = nullptr;
 
     double currentSampleRate = 44100.0;
 
-    // Core reverb
-    juce::Reverb reverb;
+    juce::Reverb reverbL, reverbR;
     void updateReverbParams (float size, float decay);
 
-    // Modulation: chorus-style delay on wet tail
+    // Mod
     static constexpr int kModBufSize = 4096;
     float modBufL[kModBufSize] = {};
     float modBufR[kModBufSize] = {};
@@ -55,9 +54,12 @@ private:
     float gatePhase     = 0.0f;
     float gateSlewState = 1.0f;
 
-    // Brightness: 1-pole LP filter state
+    // Brightness
     float bFilterL = 0.0f;
     float bFilterR = 0.0f;
+
+    // Pre-allocated dry buffer to avoid audio-thread allocation
+    juce::AudioBuffer<float> dryBuf;
 
     JUCE_LEAK_DETECTOR (PurplePlateReverbAudioProcessor)
 };
