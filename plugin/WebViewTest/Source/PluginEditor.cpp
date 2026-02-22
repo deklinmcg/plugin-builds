@@ -16,8 +16,8 @@ static juce::String getHTML()
 </head>
 <body>
 <div class="box">
-  <h1>juce:// WORKS</h1>
-  <p>WebView loaded successfully via juce:// scheme</p>
+  <h1>data: URI WORKS</h1>
+  <p>WebView loaded successfully via data: URI</p>
 </div>
 </body>
 </html>)HTMLEOF";
@@ -26,20 +26,18 @@ static juce::String getHTML()
 WebViewTestAudioProcessorEditor::WebViewTestAudioProcessorEditor (WebViewTestAudioProcessor& p)
     : AudioProcessorEditor (&p),
       audioProcessor (p),
-      webView (juce::WebBrowserComponent::Options{}
-          .withResourceProvider (
-              [this] (const juce::String& url) -> std::optional<juce::WebBrowserComponent::Resource>
-              {
-                  auto html = getHTML();
-                  std::vector<std::byte> bytes (html.getNumBytesAsUTF8());
-                  std::memcpy (bytes.data(), html.toRawUTF8(), bytes.size());
-                  return juce::WebBrowserComponent::Resource { std::move (bytes), "text/html" };
-              },
-              juce::String { "juce://plugin/" }))
+      webView (juce::WebBrowserComponent::Options{})
 {
     addAndMakeVisible (webView);
-    webView.goToURL ("juce://plugin/");
+
+    auto html    = getHTML();
+    auto encoded = juce::Base64::toBase64 (html.toRawUTF8(), (size_t) html.getNumBytesAsUTF8());
+    webView.goToURL ("data:text/html;base64," + encoded);
+
     setSize (560, 320);
+    startTimerHz (1);
 }
 
 WebViewTestAudioProcessorEditor::~WebViewTestAudioProcessorEditor() {}
+
+void WebViewTestAudioProcessorEditor::timerCallback() {}
