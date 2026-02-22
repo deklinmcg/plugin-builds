@@ -2,13 +2,15 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class WebViewTestAudioProcessorEditor : public juce::AudioProcessorEditor
+class WebViewTestAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                         public juce::Timer
 {
 public:
     explicit WebViewTestAudioProcessorEditor (WebViewTestAudioProcessor&);
     ~WebViewTestAudioProcessorEditor() override;
     void paint (juce::Graphics&) override {}
     void resized() override { webView.setBounds (getLocalBounds()); }
+    void timerCallback() override;
 
 private:
     WebViewTestAudioProcessor& audioProcessor;
