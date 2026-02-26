@@ -45,7 +45,7 @@ juce_add_plugin(LFOFool
     PLUGIN_MANUFACTURER_CODE Nfld
     PLUGIN_CODE             LfoF
     FORMATS                 ${PLUGIN_FORMATS}
-    PRODUCT_NAME            "LFO Fool"
+    PRODUCT_NAME            "LFOFool"
     NEEDS_WEBVIEW2          ${NEEDS_WEBVIEW2}
     NEEDS_WEB_BROWSER       ${NEEDS_WEB_BROWSER}
     VST3_CATEGORIES         Fx Modulation
