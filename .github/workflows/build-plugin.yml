@@ -33,6 +33,11 @@ jobs:
       - name: Build AU
         run: cmake --build build --config Release --target ${{ env.PLUGIN_NAME }}_AU -- -j2
 
+      - name: Sign plugins
+        run: |
+          codesign --force --deep --sign - "build/plugin/${{ env.PLUGIN_NAME }}/${{ env.PLUGIN_NAME }}_artefacts/Release/VST3/${{ env.PLUGIN_NAME }}.vst3" || true
+          codesign --force --deep --sign - "build/plugin/${{ env.PLUGIN_NAME }}/${{ env.PLUGIN_NAME }}_artefacts/Release/AU/${{ env.PLUGIN_NAME }}.component" || true
+
       - name: Zip artifacts
         run: |
           mkdir -p dist
