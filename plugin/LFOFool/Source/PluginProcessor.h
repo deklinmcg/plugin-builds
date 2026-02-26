@@ -104,7 +104,7 @@ private:
         }
 
     private:
-        static float shapeValue (double p, int shape)
+        static float shapeRaw (double p, int shape)
         {
             switch (shape)
             {
@@ -120,7 +120,7 @@ private:
         float shapeValue (double p, int shape) const
         {
             if (shape == 5) return holdValue;  // S&H Random
-            return shapeValue (p, shape);
+            return shapeRaw (p, shape);
         }
 
         static float applyGrit (float v, float grit)

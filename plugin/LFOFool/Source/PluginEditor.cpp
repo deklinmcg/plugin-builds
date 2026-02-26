@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <BinaryData.h>
 
 //==============================================================================
 LFOFoolAudioProcessorEditor::LFOFoolAudioProcessorEditor (LFOFoolAudioProcessor& p)
@@ -148,11 +149,16 @@ void LFOFoolAudioProcessorEditor::resized()
 
 static juce::ZipFile* getLFOFoolZip()
 {
-    static auto stream = juce::createAssetInputStream ("lfofool_webui.zip",
-                                                       juce::AssertAssetExists::no);
-    if (stream == nullptr) return nullptr;
-    static juce::ZipFile f { stream.get(), false };
-    return &f;
+    struct ZipHolder
+    {
+        juce::MemoryInputStream stream;
+        juce::ZipFile           zip;
+        ZipHolder()
+            : stream (BinaryData::lfofool_webui_zip, (size_t) BinaryData::lfofool_webui_zipSize, false),
+              zip (stream) {}
+    };
+    static ZipHolder holder;
+    return &holder.zip;
 }
 
 static const char* getLFOFoolMime (const juce::String& ext)
