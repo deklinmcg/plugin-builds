@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LFO Fool</title>
+<script type="module" src="js/index.js"></script>
+<style>
+  :root {
+    --bg: #0D0D14;
+    --surface: #14141F;
+    --border: #1E1E2E;
+    --text: #E0E0FF;
+    --text-dim: #606080;
+    --lfo1: #00FFFF;
+    --lfo2: #FFC300;
+    --lfo3: #FF00FF;
+    --lfo4: #00FF88;
+    --grit: #FF3366;
+    --chaos: #FF6600;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    width: 800px;
+    height: 500px;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── Header ── */
+  #header {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #0D0D14 0%, #10101C 100%);
+    position: relative;
+  }
+  #header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--lfo1), var(--lfo2), var(--lfo3), var(--lfo4));
+  }
+  #title    { font-size: 13px; font-weight: bold; letter-spacing: 5px; color: var(--text); }
+  #subtitle { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); }
+
+  /* ── Waveform Display ── */
+  #waveform-section {
+    height: 180px;
+    background: #080810;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  #waveform-canvas { display: block; }
+
+  /* ── LFO Strips ── */
+  #lfo-strips {
+    display: flex;
+    height: 210px;
+    border-bottom: 1px solid var(--border);
+  }
+  .lfo-strip {
+    flex: 1;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+  }
+  .lfo-strip:last-child { border-right: none; }
+  .lfo-strip::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .lfo-strip[data-lfo="1"]::before { background: var(--lfo1); }
+  .lfo-strip[data-lfo="2"]::before { background: var(--lfo2); }
+  .lfo-strip[data-lfo="3"]::before { background: var(--lfo3); }
+  .lfo-strip[data-lfo="4"]::before { background: var(--lfo4); }
+
+  .lfo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  .lfo-label { font-size: 12px; font-weight: bold; letter-spacing: 2px; }
+  .lfo-strip[data-lfo="1"] .lfo-label { color: var(--lfo1); }
+  .lfo-strip[data-lfo="2"] .lfo-label { color: var(--lfo2); }
+  .lfo-strip[data-lfo="3"] .lfo-label { color: var(--lfo3); }
+  .lfo-strip[data-lfo="4"] .lfo-label { color: var(--lfo4); }
+
+  .toggle {
+    width: 26px; height: 13px;
+    border-radius: 7px;
+    background: var(--border);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .toggle.on { background: currentColor; }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px; left: 2px;
+    transition: left 0.2s;
+  }
+  .toggle.on::after { left: 15px; }
+
+  /* Shape selector */
+  .shape-selector { display: flex; gap: 2px; }
+  .shape-btn {
+    flex: 1; height: 20px;
+    background: var(--border);
+    border: none; border-radius: 2px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+  .shape-btn.active { opacity: 1; }
+  .shape-btn svg { width: 14px; height: 10px; }
+
+  /* Knob row */
+  .knob-row {
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+    flex: 1;
+  }
+  .knob-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .knob-wrap label {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+  .knob {
+    border-radius: 50%;
+    background: #1A1A28;
+    border: 1px solid var(--border);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .knob::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 2px; height: 35%;
+    background: var(--text);
+    transform-origin: bottom center;
+    transform: translate(-50%, -100%) rotate(0deg);
+    border-radius: 1px;
+  }
+  .knob.lg { width: 42px; height: 42px; }
+  .knob.md { width: 32px; height: 32px; }
+  .knob.sm { width: 24px; height: 24px; }
+
+  .knob-grit::after { background: var(--grit) !important; }
+  .knob-grit { border-color: var(--grit) !important; }
+  .lfo-strip[data-lfo="1"] .knob-rate::after { background: var(--lfo1); }
+  .lfo-strip[data-lfo="2"] .knob-rate::after { background: var(--lfo2); }
+  .lfo-strip[data-lfo="3"] .knob-rate::after { background: var(--lfo3); }
+  .lfo-strip[data-lfo="4"] .knob-rate::after { background: var(--lfo4); }
+
+  /* Target select */
+  .target-select {
+    background: var(--border);
+    border: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 3px 5px;
+    border-radius: 2px;
+    width: 100%;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .target-select:focus { outline: none; }
+
+  /* ── Global Strip ── */
+  #global-strip {
+    height: 74px;
+    background: #10101A;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 20px;
+  }
+  .global-section { display: flex; align-items: center; gap: 14px; }
+  .global-divider { width: 1px; height: 40px; background: var(--border); }
+  .knob-chaos::after { background: var(--chaos) !important; }
+  .knob-chaos { border-color: var(--chaos) !important; }
+  .global-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text);
+    text-transform: uppercase;
+    text-align: center;
+    margin-top: 3px;
+  }
+  .sync-btn {
+    background: var(--border);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 8px;
+    letter-spacing: 2px;
+    padding: 5px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .sync-btn.on {
+    background: rgba(0,255,255,0.1);
+    border-color: var(--lfo1);
+    color: var(--lfo1);
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <span id="title">LFO FOOL</span>
+  <span id="subtitle">MULTI LFO</span>
+</div>
+
+<!-- Waveform Display -->
+<div id="waveform-section">
+  <canvas id="waveform-canvas" width="800" height="180"></canvas>
+</div>
+
+<!-- LFO Strips -->
+<div id="lfo-strips">
+
+  <div class="lfo-strip" data-lfo="1">
+    <div class="lfo-header">
+      <span class="lfo-label">LFO 1</span>
+      <div class="toggle on" id="lfo1-enabled" style="color:var(--lfo1)"></div>
+    </div>
+    <div class="shape-selector" id="shape-1">
+      <button class="shape-btn active" data-shape="0">
+        <svg viewBox="0 0 14 10" fill="none" stroke="var(--lfo1)" stroke-width="1.5"><path d="M0,5 C2,5 2,1 4,1 C6,1 6,9 8,9 C10,9 10,5 14,5"/></svg>
+      </button>
+      <button class="shape-btn" data-shape="1">
+        <svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L3,5 L3,1 L7,1 L7,9 L11,9 L11,5 L14,5"/></svg>
+      </button>
+      <button class="shape-btn" data-shape="2">
+        <svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,1 L6,9 L10,1 L14,5"/></svg>
+      </button>
+      <button class="shape-btn" data-shape="3">
+        <svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,9 L7,1 L7,9 L14,1"/></svg>
+      </button>
+      <button class="shape-btn" data-shape="4">
+        <svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,1 L7,9 L7,1 L14,9"/></svg>
+      </button>
+      <button class="shape-btn" data-shape="5">
+        <svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,3 L5,7 L7,2 L9,8 L11,4 L14,5"/></svg>
+      </button>
+    </div>
+    <div class="knob-row">
+      <div class="knob-wrap">
+        <div class="knob lg knob-rate" id="knob-lfo1-rate" data-param="lfo1_rate" data-log="true"></div>
+        <label>Rate</label>
+      </div>
+      <div class="knob-wrap">
+        <div class="knob md" id="knob-lfo1-depth" data-param="lfo1_depth"></div>
+        <label>Depth</label>
+      </div>
+      <div class="knob-wrap">
+        <div class="knob md knob-grit" id="knob-lfo1-grit" data-param="lfo1_grit"></div>
+        <label>Grit</label>
+      </div>
+      <div class="knob-wrap">
+        <div class="knob sm" id="knob-lfo1-phase" data-param="lfo1_phase"></div>
+        <label>Phase</label>
+      </div>
+    </div>
+    <select class="target-select" id="target-1" data-param="lfo1_target">
+      <option value="0">Volume</option>
+      <option value="1">Pan</option>
+      <option value="2">Filter</option>
+      <option value="3">Reverb</option>
+      <option value="4">Delay</option>
+    </select>
+  </div>
+
+  <div class="lfo-strip" data-lfo="2">
+    <div class="lfo-header">
+      <span class="lfo-label">LFO 2</span>
+      <div class="toggle on" id="lfo2-enabled" style="color:var(--lfo2)"></div>
+    </div>
+    <div class="shape-selector" id="shape-2">
+      <button class="shape-btn" data-shape="0"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 C2,5 2,1 4,1 C6,1 6,9 8,9 C10,9 10,5 14,5"/></svg></button>
+      <button class="shape-btn active" data-shape="1"><svg viewBox="0 0 14 10" fill="none" stroke="var(--lfo2)" stroke-width="1.5"><path d="M0,5 L3,5 L3,1 L7,1 L7,9 L11,9 L11,5 L14,5"/></svg></button>
+      <button class="shape-btn" data-shape="2"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,1 L6,9 L10,1 L14,5"/></svg></button>
+      <button class="shape-btn" data-shape="3"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,9 L7,1 L7,9 L14,1"/></svg></button>
+      <button class="shape-btn" data-shape="4"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,1 L7,9 L7,1 L14,9"/></svg></button>
+      <button class="shape-btn" data-shape="5"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,3 L5,7 L7,2 L9,8 L11,4 L14,5"/></svg></button>
+    </div>
+    <div class="knob-row">
+      <div class="knob-wrap"><div class="knob lg knob-rate" id="knob-lfo2-rate" data-param="lfo2_rate" data-log="true"></div><label>Rate</label></div>
+      <div class="knob-wrap"><div class="knob md" id="knob-lfo2-depth" data-param="lfo2_depth"></div><label>Depth</label></div>
+      <div class="knob-wrap"><div class="knob md knob-grit" id="knob-lfo2-grit" data-param="lfo2_grit"></div><label>Grit</label></div>
+      <div class="knob-wrap"><div class="knob sm" id="knob-lfo2-phase" data-param="lfo2_phase"></div><label>Phase</label></div>
+    </div>
+    <select class="target-select" id="target-2" data-param="lfo2_target">
+      <option value="0">Volume</option><option value="1">Pan</option><option value="2">Filter</option><option value="3">Reverb</option><option value="4">Delay</option>
+    </select>
+  </div>
+
+  <div class="lfo-strip" data-lfo="3">
+    <div class="lfo-header">
+      <span class="lfo-label">LFO 3</span>
+      <div class="toggle on" id="lfo3-enabled" style="color:var(--lfo3)"></div>
+    </div>
+    <div class="shape-selector" id="shape-3">
+      <button class="shape-btn" data-shape="0"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 C2,5 2,1 4,1 C6,1 6,9 8,9 C10,9 10,5 14,5"/></svg></button>
+      <button class="shape-btn" data-shape="1"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L3,5 L3,1 L7,1 L7,9 L11,9 L11,5 L14,5"/></svg></button>
+      <button class="shape-btn active" data-shape="2"><svg viewBox="0 0 14 10" fill="none" stroke="var(--lfo3)" stroke-width="1.5"><path d="M0,5 L2,1 L6,9 L10,1 L14,5"/></svg></button>
+      <button class="shape-btn" data-shape="3"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,9 L7,1 L7,9 L14,1"/></svg></button>
+      <button class="shape-btn" data-shape="4"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,1 L7,9 L7,1 L14,9"/></svg></button>
+      <button class="shape-btn" data-shape="5"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,3 L5,7 L7,2 L9,8 L11,4 L14,5"/></svg></button>
+    </div>
+    <div class="knob-row">
+      <div class="knob-wrap"><div class="knob lg knob-rate" id="knob-lfo3-rate" data-param="lfo3_rate" data-log="true"></div><label>Rate</label></div>
+      <div class="knob-wrap"><div class="knob md" id="knob-lfo3-depth" data-param="lfo3_depth"></div><label>Depth</label></div>
+      <div class="knob-wrap"><div class="knob md knob-grit" id="knob-lfo3-grit" data-param="lfo3_grit"></div><label>Grit</label></div>
+      <div class="knob-wrap"><div class="knob sm" id="knob-lfo3-phase" data-param="lfo3_phase"></div><label>Phase</label></div>
+    </div>
+    <select class="target-select" id="target-3" data-param="lfo3_target">
+      <option value="0">Volume</option><option value="1">Pan</option><option value="2">Filter</option><option value="3">Reverb</option><option value="4">Delay</option>
+    </select>
+  </div>
+
+  <div class="lfo-strip" data-lfo="4">
+    <div class="lfo-header">
+      <span class="lfo-label">LFO 4</span>
+      <div class="toggle" id="lfo4-enabled" style="color:var(--lfo4)"></div>
+    </div>
+    <div class="shape-selector" id="shape-4">
+      <button class="shape-btn" data-shape="0"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 C2,5 2,1 4,1 C6,1 6,9 8,9 C10,9 10,5 14,5"/></svg></button>
+      <button class="shape-btn" data-shape="1"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L3,5 L3,1 L7,1 L7,9 L11,9 L11,5 L14,5"/></svg></button>
+      <button class="shape-btn" data-shape="2"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,1 L6,9 L10,1 L14,5"/></svg></button>
+      <button class="shape-btn active" data-shape="3"><svg viewBox="0 0 14 10" fill="none" stroke="var(--lfo4)" stroke-width="1.5"><path d="M0,9 L7,1 L7,9 L14,1"/></svg></button>
+      <button class="shape-btn" data-shape="4"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,1 L7,9 L7,1 L14,9"/></svg></button>
+      <button class="shape-btn" data-shape="5"><svg viewBox="0 0 14 10" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M0,5 L2,3 L5,7 L7,2 L9,8 L11,4 L14,5"/></svg></button>
+    </div>
+    <div class="knob-row">
+      <div class="knob-wrap"><div class="knob lg knob-rate" id="knob-lfo4-rate" data-param="lfo4_rate" data-log="true"></div><label>Rate</label></div>
+      <div class="knob-wrap"><div class="knob md" id="knob-lfo4-depth" data-param="lfo4_depth"></div><label>Depth</label></div>
+      <div class="knob-wrap"><div class="knob md knob-grit" id="knob-lfo4-grit" data-param="lfo4_grit"></div><label>Grit</label></div>
+      <div class="knob-wrap"><div class="knob sm" id="knob-lfo4-phase" data-param="lfo4_phase"></div><label>Phase</label></div>
+    </div>
+    <select class="target-select" id="target-4" data-param="lfo4_target">
+      <option value="0">Volume</option><option value="1">Pan</option><option value="2">Filter</option><option value="3">Reverb</option><option value="4">Delay</option>
+    </select>
+  </div>
+
+</div><!-- /lfo-strips -->
+
+<!-- Global Strip -->
+<div id="global-strip">
+  <div class="global-section">
+    <div class="knob-wrap">
+      <div class="knob lg knob-chaos" id="knob-chaos" data-param="chaos"></div>
+      <div class="global-label">Chaos</div>
+    </div>
+  </div>
+  <div class="global-divider"></div>
+  <div class="global-section">
+    <div class="knob-wrap">
+      <div class="knob md" id="knob-master-depth" data-param="master_depth"></div>
+      <div class="global-label">Depth</div>
+    </div>
+    <div class="knob-wrap">
+      <div class="knob md" id="knob-filter-cutoff" data-param="filter_cutoff_base" data-log="true"></div>
+      <div class="global-label">Freq</div>
+    </div>
+    <div class="knob-wrap">
+      <div class="knob sm" id="knob-filter-res" data-param="filter_resonance"></div>
+      <div class="global-label">Res</div>
+    </div>
+  </div>
+  <div class="global-divider"></div>
+  <div class="global-section">
+    <div class="knob-wrap">
+      <div class="knob sm" id="knob-reverb" data-param="reverb_base"></div>
+      <div class="global-label">Reverb</div>
+    </div>
+    <div class="knob-wrap">
+      <div class="knob sm" id="knob-delay" data-param="delay_base"></div>
+      <div class="global-label">Delay</div>
+    </div>
+  </div>
+  <div class="global-divider"></div>
+  <button class="sync-btn" id="sync-btn">BPM SYNC</button>
+</div>
+
+</body>
+</html>
